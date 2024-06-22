@@ -1,8 +1,9 @@
-// bot.ts
 import {
   Client,
   Collection,
   Message,
+  MessageCreateOptions,
+  MessagePayload,
   TextChannel,
   ThreadChannel,
 } from "discord.js";
@@ -16,29 +17,30 @@ type DiscordMessage = {
   timestamp?: number;
 };
 
-async function callGenerativeAi(thread: DiscordMessage[]) {
+async function callGenerativeAi(
+  thread: DiscordMessage[],
+  callback: { (_: any): Promise<Message<true>>; (options: string | MessagePayload | MessageCreateOptions): Promise<Message<true>>; (arg0: string): any; }
+) {
   const messages = thread.map((message) => {
     return {
       content: message.content,
       role: client.user?.id === message.author ? "assistant" : "user",
-      name: client.user?.id ?? '',
+      name: client.user?.id ?? "",
     } as ChatCompletionMessageParam;
   });
   let response = "";
 
   try {
     const generator = main(messages);
-    const header = (await generator.next()).value as string;
-
-    switch (header) {
-      case "NORMAL":
-        for await (const chunk of generator) {
-          response += chunk;
-        }
-        break;
-      case "TOOL_CALLS":
-        response = JSON.stringify((await generator.next()).value);
-        break;
+    for await (const message of generator) {
+      switch (message.type) {
+        case "chunk":
+          response += message.value;
+          break;
+        case "guide":
+          await callback(message.value || 'Message is Empty');
+          break;
+      }
     }
   } catch (e) {
     console.error(e);
@@ -84,8 +86,12 @@ client.on("messageCreate", async (message: Message) => {
   }
 
   replyThread.sendTyping();
-  const response = await generateResponse(replyThread, message);
-  await replyThread.send(response);
+  const response = await generateResponse(
+    replyThread,
+    message,
+    (_: string | MessagePayload | MessageCreateOptions) => replyThread.send(_)
+  );
+  if (response) await replyThread.send(response);
 
   if (shouldSendImage(message.content)) {
     await sendImage(replyThread);
@@ -94,7 +100,8 @@ client.on("messageCreate", async (message: Message) => {
 
 async function generateResponse(
   thread: ThreadChannel,
-  latestMessage: Message
+  latestMessage: Message,
+  callback: { (_: any): Promise<Message<true>>; (options: string | MessagePayload | MessageCreateOptions): Promise<Message<true>>; }
 ): Promise<string> {
   const messages = await thread.messages.fetch({ limit: 100 });
   const conversationHistory: DiscordMessage[] = messages
@@ -115,7 +122,7 @@ async function generateResponse(
   }
 
   try {
-    const response = await callGenerativeAi(conversationHistory);
+    const response = await callGenerativeAi(conversationHistory, callback);
     return response;
   } catch (error) {
     console.error("Error calling generative AI:", error);
