@@ -67,6 +67,7 @@ client.on("messageCreate", async (message: Message) => {
     message.channel.isThread() && kotoneThreads.has(message.channel.id);
 
   if (!isKotoneMention && !isInKotoneThread) return;
+  if (message.content.startsWith('!')) return;
 
   let replyThread: ThreadChannel;
 
@@ -110,7 +111,8 @@ async function generateResponse(
       content: msg.content,
       author: msg.author.id,
       timestamp: msg.createdTimestamp,
-    }));
+    }))
+    .filter((msg) => ( !msg.content.startsWith('!')));
 
   // Add the latest message if it's not already in the thread
   if (!messages.has(latestMessage.id)) {
