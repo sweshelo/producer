@@ -1,0 +1,3 @@
+[submodule "package/kotone"]
+	path = package/kotone
+	url = git@github.com:sweshelo/kotone
